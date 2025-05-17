@@ -174,13 +174,12 @@ class SoundboardApp(QMainWindow):
         self.hotkey_manager.remove_hotkey(mapping_file, scene_name)
 
     def load_all_scenes(self):
-        # GridLayout leeren
-        for i in reversed(range(self.scenes_layout.count())):
-            item = self.scenes_layout.itemAt(i)
+        # GridLayout robust leeren
+        while self.scenes_layout.count():
+            item = self.scenes_layout.takeAt(0)
             widget = item.widget()
-            if widget:
-                widget.setParent(None)
-            self.scenes_layout.removeItem(item)
+            if widget is not None:
+                widget.deleteLater()
 
         mappings = list_all_track_mappings()
         row = 0
