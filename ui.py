@@ -29,10 +29,32 @@ def get_scene_button_style(is_active=False):
 def make_context_menu(button, mapping_file, scene_name, main_window):
     def contextMenuEvent(event):
         menu = QMenu()
+        
+        # Aktuelle Szene ist aktiv
+        is_active = (main_window.current_scene_name == scene_name and main_window.current_playing)
+        
+        # Play/Pause Aktion
+        if is_active:
+            if main_window.is_paused:
+                action_play = menu.addAction("Weiter")
+            else:
+                action_play = menu.addAction("Pause")
+        else:
+            action_play = menu.addAction("Abspielen")
+        
+        menu.addSeparator()
         action_edit = menu.addAction("Szene bearbeiten")
         action_delete = menu.addAction("Szene löschen")
+        
         action = menu.exec(event.globalPos())
-        if action == action_edit:
+        if action == action_play:
+            if is_active:
+                main_window.pause_playback()
+            else:
+                data = load_mapping(mapping_file)
+                scene = data["scenes"][scene_name]
+                main_window.play_scene(data["track"], scene, scene_name)
+        elif action == action_edit:
             from scene_manager import edit_specific_scene
             edit_specific_scene(main_window, mapping_file, scene_name)
             main_window.load_all_scenes()
@@ -124,6 +146,12 @@ class SoundboardApp(QWidget):
                     row += 1
 
     def play_scene(self, track, scene, name):
+        # Wenn die gleiche Szene bereits läuft, nur Pause/Weiter
+        if self.current_scene_name == name and self.current_playing:
+            self.pause_playback()
+            return
+
+        # Neue Szene starten
         self.current_track = track
         self.current_scene_name = name
         self.current_start = scene['start']
@@ -149,6 +177,7 @@ class SoundboardApp(QWidget):
                 mixer.music.unpause()
                 self.is_paused = False
                 self.pause_btn.setText("Pause")
+            self.load_all_scenes()  # Aktualisiere UI nach Pause/Weiter
 
     def stop_playback(self):
         stop_playback()

@@ -6,6 +6,7 @@ from help import HelpDialog
 import shutil
 import os
 from config import FFMPEG_DIR
+from yt_importer import YoutubeImportDialog, YoutubeBulkImportDialog
 
 class MenuBar(QMenuBar):
     def __init__(self, parent=None):
@@ -19,6 +20,7 @@ class MenuBar(QMenuBar):
 
         self.file_menu.addAction("Track hochladen", lambda: upload_track(parent))
         self.file_menu.addAction("Track von YouTube holen", lambda: self.import_youtube_track(parent))
+        self.file_menu.addAction("Bulk-YouTube-Import...", lambda: bulk_youtube_import(parent))
         self.file_menu.addAction("Track löschen", lambda: delete_track(parent))
         self.file_menu.addAction("Beenden", parent.close)
 
@@ -52,3 +54,7 @@ class MenuBar(QMenuBar):
             YoutubeImportDialog("assets", parent).exec()
         except Exception as e:
             QMessageBox.critical(parent, "Fehler", f"Beim Import ist ein Fehler aufgetreten:\n{e}")
+
+def bulk_youtube_import(parent):
+    dlg = YoutubeBulkImportDialog(parent)
+    dlg.exec()

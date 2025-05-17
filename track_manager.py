@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from send2trash import send2trash
 from config import ASSET_DIR, MAPPING_DIR
 from mapper import load_mapping
+from PySide6.QtCore import Qt
 
 
 def upload_track(parent):
@@ -37,9 +38,9 @@ def upload_track(parent):
 
 
 def delete_track(parent):
-    tracks = os.listdir(ASSET_DIR)
+    tracks = [f for f in os.listdir(ASSET_DIR) if f.lower().endswith('.mp3')]
     if not tracks:
-        QMessageBox.information(parent, "Info", "Keine Tracks vorhanden.")
+        QMessageBox.information(parent, "Info", "Keine MP3-Tracks vorhanden.")
         return
 
     dlg = TrackDeleteDialog(parent, tracks)
@@ -56,8 +57,29 @@ class TrackDeleteDialog(QDialog):
         layout.addWidget(QLabel("Wähle Track zum Löschen:"))
 
         self.list = QListWidget()
-        self.list.addItems(tracks)
         layout.addWidget(self.list)
+
+        # Prüfe für jeden Track, ob er noch in Szenen verwendet wird
+        for track in tracks:
+            base_name = os.path.splitext(track)[0]
+            json_path = os.path.join(MAPPING_DIR, base_name + ".json")
+            item_text = track
+            item = self.list.addItem(item_text)
+            used = False
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        scenes = data.get("scenes", {})
+                        if scenes:
+                            used = True
+                except Exception:
+                    pass
+            if used:
+                list_item = self.list.item(self.list.count()-1)
+                list_item.setFlags(list_item.flags() & ~2)  # Nicht auswählbar
+                list_item.setForeground(Qt.gray)
+                list_item.setToolTip("Track wird noch in einer Szene verwendet und kann nicht gelöscht werden.")
 
         btn_layout = QHBoxLayout()
         self.delete_btn = QPushButton("Löschen")
@@ -73,7 +95,8 @@ class TrackDeleteDialog(QDialog):
         self.list.currentItemChanged.connect(self.toggle_delete)
 
     def toggle_delete(self):
-        self.delete_btn.setEnabled(self.list.currentItem() is not None)
+        item = self.list.currentItem()
+        self.delete_btn.setEnabled(item is not None and bool(item.flags() & Qt.ItemIsEnabled))
 
     def delete_selected(self):
         selected_item = self.list.currentItem()
