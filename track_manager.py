@@ -51,12 +51,14 @@ class TrackDeleteDialog(QDialog):
     def __init__(self, parent, tracks):
         super().__init__(parent)
         self.setWindowTitle("Track löschen")
-        self.setMinimumSize(400, 200)
+        self.setMinimumWidth(400)
+        self.setMinimumHeight(200)  # Höhe separat setzen
 
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("Wähle Track zum Löschen:"))
+        layout.addWidget(QLabel("Wähle Track(s) zum Löschen:"))
 
         self.list = QListWidget()
+        self.list.setSelectionMode(QListWidget.MultiSelection)  # Mehrfachauswahl erlauben
         layout.addWidget(self.list)
 
         # Prüfe für jeden Track, ob er noch in Szenen verwendet wird
@@ -77,7 +79,7 @@ class TrackDeleteDialog(QDialog):
                     pass
             if used:
                 list_item = self.list.item(self.list.count()-1)
-                list_item.setFlags(list_item.flags() & ~2)  # Nicht auswählbar
+                list_item.setFlags(list_item.flags() & ~Qt.ItemIsEnabled)  # Nicht auswählbar
                 list_item.setForeground(Qt.gray)
                 list_item.setToolTip("Track wird noch in einer Szene verwendet und kann nicht gelöscht werden.")
 
@@ -93,41 +95,32 @@ class TrackDeleteDialog(QDialog):
 
         self.setLayout(layout)
         self.list.currentItemChanged.connect(self.toggle_delete)
+        self.list.itemSelectionChanged.connect(self.toggle_delete)
 
     def toggle_delete(self):
-        item = self.list.currentItem()
-        self.delete_btn.setEnabled(item is not None and bool(item.flags() & Qt.ItemIsEnabled))
+        # Mindestens ein auswählbares Item muss selektiert sein
+        items = self.list.selectedItems()
+        self.delete_btn.setEnabled(any(item.flags() & Qt.ItemIsEnabled for item in items))
 
     def delete_selected(self):
-        selected_item = self.list.currentItem()
-        if not selected_item:
+        selected_items = [item for item in self.list.selectedItems() if item.flags() & Qt.ItemIsEnabled]
+        if not selected_items:
             return
-
-        filename = selected_item.text()
-        base_name = os.path.splitext(filename)[0]
-        track_path = os.path.join(ASSET_DIR, filename)
-        json_path = os.path.join(MAPPING_DIR, base_name + ".json")
-
-        # Prüfen auf Szenen
-        if os.path.exists(json_path):
-            data = load_mapping(base_name + ".json")
-            scenes = data.get("scenes", {})
-            if scenes:
-                res = QMessageBox.question(
-                    self,
-                    "Szenen gefunden",
-                    f"Der Track '{base_name}' enthält noch {len(scenes)} Szenen.\n"
-                    "Möchtest du diese automatisch löschen und den Track entfernen?",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                if res != QMessageBox.Yes:
-                    return
-
-        # Datei in den Müll
-        if os.path.exists(track_path):
-            send2trash(track_path)
-        if os.path.exists(json_path):
-            send2trash(json_path)
-
-        QMessageBox.information(self, "Erledigt", f"Track '{filename}' wurde inklusive aller Daten gelöscht.")
+        deleted = []
+        for selected_item in selected_items:
+            filename = selected_item.text()
+            base_name = os.path.splitext(filename)[0]
+            track_path = os.path.join(ASSET_DIR, filename)
+            json_path = os.path.join(MAPPING_DIR, base_name + ".json")
+            # Datei in den Müll
+            if os.path.exists(track_path):
+                send2trash(track_path)
+            if os.path.exists(json_path):
+                send2trash(json_path)
+            deleted.append(filename)
+        QMessageBox.information(
+            self,
+            "Erledigt",
+            f"{len(deleted)} Track(s) wurden inklusive aller Daten gelöscht:\n" + "\n".join(deleted)
+        )
         self.accept()

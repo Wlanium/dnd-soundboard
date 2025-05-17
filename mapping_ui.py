@@ -146,10 +146,17 @@ class MappingDialog(QDialog):
 
         # Track-Auswahl
         self.track_combo = QComboBox()
-        self.track_map = {
-            os.path.splitext(f)[0]: f for f in os.listdir(MAPPING_DIR)
-            if f.endswith(".json")
-        }
+        self.track_map = {}
+        for f in os.listdir(MAPPING_DIR):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(MAPPING_DIR, f), 'r', encoding='utf-8') as mf:
+                        data = json.load(mf)
+                        track = data.get('track', '')
+                        if isinstance(track, str) and track.lower().endswith('.mp3'):
+                            self.track_map[os.path.splitext(f)[0]] = f
+                except Exception:
+                    pass
         self.track_combo.addItems(self.track_map.keys())
         self.track_combo.currentTextChanged.connect(self.on_track_changed)
         layout.addWidget(QLabel("Track:"))
@@ -180,20 +187,18 @@ class MappingDialog(QDialog):
         layout.addWidget(QLabel("Dauer:"))
         layout.addWidget(self.duration_input)
 
-        # Icon-Auswahl als Grid + Upload-Button
+        # Icon-Auswahl als Grid + Upload-Button (nur rechts!)
         layout.addWidget(QLabel("Icon (optional):"))
-        icon_row = QHBoxLayout()
-        layout.addLayout(icon_row)
-        self.setLayout(layout)  # Layout VOR refresh_icon_grid setzen!
+        self.icon_row = QHBoxLayout()
+        layout.addLayout(self.icon_row)
+        self.setLayout(layout)
+        self.upload_btn = QToolButton()
+        self.upload_btn.setIcon(QIcon.fromTheme("document-open"))
+        self.upload_btn.setText("+")
+        self.upload_btn.setToolTip("Icons hochladen")
+        self.upload_btn.setFixedSize(32,32)
+        self.upload_btn.clicked.connect(self.open_icon_upload)
         self.refresh_icon_grid(default_icon)
-        icon_row.addWidget(self.icon_scroll)
-        upload_btn = QToolButton()
-        upload_btn.setIcon(QIcon.fromTheme("document-open"))
-        upload_btn.setText("+")
-        upload_btn.setToolTip("Icons hochladen")
-        upload_btn.setFixedSize(32,32)
-        upload_btn.clicked.connect(self.open_icon_upload)
-        icon_row.addWidget(upload_btn)
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -229,38 +234,18 @@ class MappingDialog(QDialog):
             f for f in os.listdir(ICON_DIR)
             if f.endswith(".webp")
         ]
-        # Entferne alte ScrollArea aus Layout
-        if hasattr(self, 'icon_scroll') and self.icon_scroll is not None:
-            parent_layout = self.icon_scroll.parentWidget().layout() if self.icon_scroll.parentWidget() else None
-            if parent_layout:
-                parent_layout.removeWidget(self.icon_scroll)
-            self.icon_scroll.deleteLater()
-            self.icon_scroll = None
+        # Entferne alle alten Widgets aus icon_row
+        while self.icon_row.count():
+            w = self.icon_row.takeAt(0).widget()
+            if w:
+                w.setParent(None)
         self.icon_grid = IconGridWidget(icons, default_icon or self.selected_icon)
         self.icon_scroll = QScrollArea()
         self.icon_scroll.setWidgetResizable(True)
         self.icon_scroll.setWidget(self.icon_grid)
         self.icon_scroll.setFixedHeight(80)
-        # Füge neue ScrollArea ins Layout ein
-        # Suche das icon_row Layout
-        for i in range(self.layout().count()):
-            item = self.layout().itemAt(i)
-            if isinstance(item, QHBoxLayout):
-                # Entferne alle alten Widgets aus icon_row
-                while item.count():
-                    w = item.takeAt(0).widget()
-                    if w:
-                        w.setParent(None)
-                item.addWidget(self.icon_scroll)
-                # Upload-Button wieder hinzufügen
-                upload_btn = QToolButton()
-                upload_btn.setIcon(QIcon.fromTheme("document-open"))
-                upload_btn.setText("+")
-                upload_btn.setToolTip("Icons hochladen")
-                upload_btn.setFixedSize(32,32)
-                upload_btn.clicked.connect(self.open_icon_upload)
-                item.addWidget(upload_btn)
-                break
+        self.icon_row.addWidget(self.icon_scroll)
+        self.icon_row.addWidget(self.upload_btn)
         self.icon_scroll.update()
         self.icon_grid.update()
         self.update()

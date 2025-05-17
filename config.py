@@ -3,11 +3,17 @@ import os
 import sys
 import shutil
 
+def resource_path(relative_path):
+    # Funktioniert sowohl im PyInstaller-Bundle als auch im Entwicklermodus
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.abspath(relative_path)
+
 # Basis-Verzeichnis: dort, wo die .exe liegt (auch bei PyInstaller --onefile korrekt)
 BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(".")
 
-# Pfade, wie du sie willst:
-ASSET_DIR = os.path.join(BASE_DIR, "assets")
+# Pfade, jetzt PyInstaller-kompatibel:
+ASSET_DIR = resource_path("assets")
 ICON_DIR = os.path.join(ASSET_DIR, "icon")
 HELP_DIR = os.path.join(ASSET_DIR, "hilfe")
 MAPPING_DIR = os.path.join(BASE_DIR, "mappings")

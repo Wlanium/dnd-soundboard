@@ -4,9 +4,9 @@ import yt_dlp
 import shutil
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox,
-    QProgressBar, QTextEdit
+    QProgressBar, QTextEdit, QApplication
 )
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QMetaObject, QObject
 from config import MAPPING_DIR, FFMPEG_DIR, ASSET_DIR
 
 class YoutubeDownloadWorker(QThread):
@@ -148,6 +148,8 @@ class YoutubeImportDialog(QDialog):
             self.set_status("Fehler beim Download/Konvertieren!")
             QMessageBox.critical(self, "Fehler", f"Download fehlgeschlagen:\n{message}")
 
+bulk_workers = []
+
 class YoutubeBulkImportDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -181,40 +183,55 @@ class YoutubeBulkImportDialog(QDialog):
         self.start_btn.setEnabled(False)
         self.progress.setMaximum(len(links))
         self.progress.setValue(0)
-        self.worker = YoutubeBulkWorker(links, self)
+        global bulk_workers
+        self.worker = YoutubeBulkWorker(links)
+        bulk_workers.append(self.worker)
         self.worker.progress_changed.connect(self.progress.setValue)
-        self.worker.finished.connect(self.on_bulk_finished)
+        self.worker.show_result.connect(show_bulk_result_message)
+        self.worker.finished.connect(lambda _: bulk_workers.remove(self.worker))
         self.worker.start()
-
-    def on_bulk_finished(self, results):
-        self.start_btn.setEnabled(True)
-        errors = [r for r in results if not r[0]]
-        if not errors:
-            QMessageBox.information(self, "Fertig", "Alle Dateien wurden erfolgreich importiert!")
-        else:
-            msg = "Folgende Links konnten nicht importiert werden:\n\n"
-            for ok, link, err in errors:
-                msg += f"{link}\nFehler: {err}\n\n"
-            QMessageBox.warning(self, "Fehler beim Import", msg)
         self.accept()
 
 class YoutubeBulkWorker(QThread):
     progress_changed = Signal(int)
     finished = Signal(list)  # Liste von (ok, link, err)
+    show_result = Signal(list)  # NEU: Ergebnis an Hauptthread
 
-    def __init__(self, links, parent=None):
-        super().__init__(parent)
+    def __init__(self, links):
+        super().__init__(None)  # Kein Parent!
         self.links = links
         self.results = []
 
     def run(self):
+        from config import ASSET_DIR, MAPPING_DIR
+        import os, json
         for idx, link in enumerate(self.links, 1):
             try:
-                # Reuse Einzelimport-Worker synchron
                 worker = YoutubeDownloadWorker(link, ASSET_DIR)
                 worker.run()  # synchron!
+                # Mapping-JSON wie beim Einzelimport anlegen
+                if worker.downloaded_file:
+                    filename = os.path.basename(worker.downloaded_file)
+                    json_path = os.path.join(MAPPING_DIR, os.path.splitext(filename)[0] + ".json")
+                    if not os.path.exists(json_path):
+                        with open(json_path, "w", encoding="utf-8") as f:
+                            json.dump({"track": filename, "scenes": {}}, f, indent=4)
                 self.results.append((True, link, None))
             except Exception as e:
                 self.results.append((False, link, str(e)))
             self.progress_changed.emit(idx)
+        # Abschlussmeldung per Signal an Hauptthread
+        self.show_result.emit(self.results)
         self.finished.emit(self.results)
+
+# Funktion im Hauptthread für Abschlussmeldung
+def show_bulk_result_message(results):
+    app = QApplication.instance()
+    errors = [r for r in results if not r[0]]
+    if not errors:
+        QMessageBox.information(app.activeWindow(), "Fertig", "Alle Dateien wurden erfolgreich importiert!")
+    else:
+        msg = "Folgende Links konnten nicht importiert werden:\n\n"
+        for ok, link, err in errors:
+            msg += f"{link}\nFehler: {err}\n\n"
+        QMessageBox.warning(app.activeWindow(), "Fehler beim Import", msg)
